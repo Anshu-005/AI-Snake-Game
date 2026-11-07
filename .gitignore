@@ -1,0 +1,35 @@
+# Python bytecode and cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual Environment
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Matplotlib & Pygame temporary files
+matplotlib_cache/
+.matplotlib/
+training_progress.png
+
+# IDE and Editor configurations
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Operating System files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# PyTorch / Model checkpoints (uncomment to exclude trained weights)
+# *.pth
+# *.pt
+
