@@ -1,34 +1,50 @@
-import os
 import torch
 from agent import Agent
 from game.snake_game import SnakeGame
 
-def play():
+def evaluate():
     agent = Agent()
-    game = SnakeGame(speed=15)
+    game = SnakeGame()
 
-    # Load trained model (check model/model.pth or root model.pth)
-    model_path = "model/model.pth" if os.path.exists("model/model.pth") else "model.pth"
-    if os.path.exists(model_path):
-        agent.model.load_state_dict(
-            torch.load(model_path, map_location="cpu", weights_only=True)
-        )
-        agent.model.eval()
-        print(f"Loaded trained model from {model_path}")
-    else:
-        print(f"Warning: No checkpoint found at {model_path}. Running untrained agent.")
+    agent.model.load_state_dict(
+        torch.load("model.pth", map_location="cpu")
+    )
 
-    # Disable random exploration (100% exploitation)
-    agent.n_games = 1000
+    # Disable random exploration
+    agent.epsilon = 0
 
-    while True:
-        state = agent.get_state(game)
-        final_move = agent.get_action(state)
-        reward, done, score = game.play_step(final_move)
+    scores = []
 
-        if done:
-            print("Game Over! Final Score:", score)
-            game.reset()
+    for episode in range(10):
+        game.reset()
+        done = False
+
+        while not done:
+            state = agent.get_state(game)
+
+            with torch.no_grad():
+                prediction = agent.model(
+                    torch.tensor(state, dtype=torch.float)
+                )
+
+            move = prediction.argmax().item()
+
+            action = [0, 0, 0]
+            action[move] = 1
+
+            _, done, score = game.play_step(action)
+
+        scores.append(score)
+
+        print(f"Episode {episode + 1}: Score = {score}")
+
+    print("\nEvaluation Results")
+    print("Highest:", max(scores))
+    print("Average:", sum(scores) / len(scores))
+
+    pygame.quit()
+
 
 if __name__ == "__main__":
-    play()
+    import pygame
+    evaluate()

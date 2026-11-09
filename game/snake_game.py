@@ -74,11 +74,13 @@ class SnakeGame:
         self._place_food()
         self.frame_iteration = 0
 
+    def _get_distance(self, point1, point2):
+        return abs(point1.x - point2.x) + abs(point1.y - point2.y)     
+
     def _place_food(self):
         x = random.randint(0, (self.width - BLOCK_SIZE) // BLOCK_SIZE) * BLOCK_SIZE
         y = random.randint(0, (self.height - BLOCK_SIZE) // BLOCK_SIZE) * BLOCK_SIZE
         self.food = Point(x, y)
-
         if self.food in self.snake:
             self._place_food()
 
@@ -93,15 +95,14 @@ class SnakeGame:
 
             idx = clockwise.index(self.direction)
 
-            # [Straight, Right, Left]
-            action_list = list(action) if hasattr(action, '__iter__') else action
-
-            if action_list == [1, 0, 0]:
+            if list(action) == [1, 0, 0]:
                 new_direction = clockwise[idx]
-            elif action_list == [0, 1, 0]:
+            elif list(action) == [0, 1, 0]:
                 new_direction = clockwise[(idx + 1) % 4]
-            else:
+            elif list(action) == [0, 0, 1]:
                 new_direction = clockwise[(idx - 1) % 4]
+            else:
+                raise ValueError(f"Invalid action: {action}")
 
             self.direction = new_direction
 
@@ -189,6 +190,7 @@ class SnakeGame:
             if event.type == pygame.QUIT:
                 pygame.quit()
                 quit()
+
             if action is None and event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_LEFT and self.direction != Direction.RIGHT:
                     self.direction = Direction.LEFT
@@ -199,26 +201,42 @@ class SnakeGame:
                 elif event.key == pygame.K_DOWN and self.direction != Direction.UP:
                     self.direction = Direction.DOWN
 
+        # Remember distance to the current food
+        old_distance = self._get_distance(self.head, self.food)
+
         self._move(action)
         self.snake.insert(0, self.head)
 
         game_over = False
         reward = 0
 
-        # Collision or loop timeout (for AI training)
-        if self.is_collision() or (action is not None and self.frame_iteration > 100 * len(self.snake)):
+        # Collision or timeout
+        if self.is_collision() or (
+            action is not None and self.frame_iteration > 100 * len(self.snake)
+        ):
             game_over = True
             reward = -10
             return reward, game_over, self.score
 
+        # Food eaten
         if self.head == self.food:
             self.score += 1
             reward = 10
             self._place_food()
+
         else:
             self.snake.pop()
 
+            # Reward for moving closer to food
+            new_distance = self._get_distance(self.head, self.food)
+
+            if new_distance < old_distance:
+                reward = 0.1
+            elif new_distance > old_distance:
+                reward = -0.1
+
         self._update_ui()
+
         if self.speed > 0:
             self.clock.tick(self.speed)
 

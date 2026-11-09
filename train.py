@@ -82,9 +82,9 @@ def set_plot_position(x=PLOT_X, y=PLOT_Y, w=PLOT_W, h=PLOT_H):
         pass
 
 
-def plot(scores, mean_scores, time_left_str=""):
+def plot(scores, mean_scores, status_str=""):
     plt.clf()
-    title = f'AI Snake Training ({time_left_str} remaining)' if time_left_str else 'AI Snake Training'
+    title = f'AI Snake Training ({status_str})' if status_str else 'AI Snake Training'
     plt.title(title, fontsize=12, fontweight='bold')
     plt.xlabel('Number of Games', fontsize=10)
     plt.ylabel('Score', fontsize=10)
@@ -106,14 +106,14 @@ def plot(scores, mean_scores, time_left_str=""):
     plt.pause(0.01)
 
 
-def train(duration_seconds=120):
+def train(max_games=350):
     plot_scores = []
     plot_mean_scores = []
     total_score = 0
     record = 0
 
     print("=" * 65)
-    print(f"Starting Snake AI Training for {duration_seconds // 60} minutes ({duration_seconds} seconds)")
+    print(f"Starting Snake AI Training for {max_games} games")
     print(f"Detected Screen: {SCREEN_W}x{SCREEN_H}")
     print("Non-Overlapping Window Layout:")
     print(f"  • Left  : Snake Game  -> x={GAME_X}, y={GAME_Y} (width={GAME_W}, height={GAME_H})")
@@ -122,29 +122,22 @@ def train(duration_seconds=120):
 
     # 1. Initialize visualization window and anchor position immediately
     set_plot_position(PLOT_X, PLOT_Y, PLOT_W, PLOT_H)
-    plot([], [], f"{duration_seconds // 60}m 00s")
+    plot([], [], f"Game 0/{max_games}")
 
     # 2. Initialize Snake Game and anchor position on the left
     agent = Agent()
-    game = SnakeGame(speed=40, window_pos=(GAME_X, GAME_Y))
+    game = SnakeGame(speed=0, window_pos=(GAME_X, GAME_Y))
     game.set_window_pos(GAME_X, GAME_Y)
 
     start_time = time.time()
     steps = 0
 
-    while True:
-        elapsed = time.time() - start_time
-        if elapsed >= duration_seconds:
-            print("\n" + "=" * 65)
-            print(f"Training timer reached ({duration_seconds // 60} minutes). Wrapping up...")
-            break
+    while agent.n_games < max_games:
+        games_left = max_games - agent.n_games
+        status_str = f"Game {agent.n_games}/{max_games}"
 
-        remaining = max(0, int(duration_seconds - elapsed))
-        mins, secs = divmod(remaining, 60)
-        time_left_str = f"{mins}m {secs:02d}s"
-
-        # Update Pygame window title with live countdown
-        pygame.display.set_caption(f'AI Snake Game - Time Left: {time_left_str} | Score: {game.score}')
+        # Update Pygame window title with progress
+        pygame.display.set_caption(f'AI Snake Game - {status_str} | Score: {game.score} | Record: {record}')
 
         # Re-verify window positions for the first 5 frames to ensure OS placement sticks
         steps += 1
@@ -182,16 +175,20 @@ def train(duration_seconds=120):
                 record = score
                 agent.model.save()
 
-            print(f'Game: {agent.n_games:3d} | Score: {score:2d} | Record: {record:2d} | Time Left: {time_left_str}')
+            print(f'Game: {agent.n_games:3d}/{max_games} | Score: {score:2d} | Record: {record:2d} | {games_left - 1} left')
 
             plot_scores.append(score)
             total_score += score
             mean_score = total_score / agent.n_games
             plot_mean_scores.append(mean_score)
 
-            plot(plot_scores, plot_mean_scores, time_left_str)
+            plot(plot_scores, plot_mean_scores, f"Game {agent.n_games}/{max_games}")
 
     # Training completed: Finalize and display summary
+    elapsed = time.time() - start_time
+    mins, secs = divmod(int(elapsed), 60)
+    print("\n" + "=" * 65)
+    print(f"Training completed: {max_games} games in {mins}m {secs}s")
     print("=" * 65)
     print("TRAINING SUMMARY:")
     print(f"  • Total Games Played: {agent.n_games}")

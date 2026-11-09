@@ -5,6 +5,7 @@ from collections import deque
 from game.snake_game import SnakeGame, Direction, Point, BLOCK_SIZE
 from model.neural_network import Linear_QNet, QTrainer
 from helper import plot
+from replay_buffer import PrioritizedReplayBuffer
 
 MAX_MEMORY = 100_000
 BATCH_SIZE = 1000
@@ -15,7 +16,7 @@ class Agent:
         self.n_games = 0
         self.epsilon = 0  # randomness
         self.gamma = 0.9  # discount rate
-        self.memory = deque(maxlen=MAX_MEMORY)
+        self.memory = PrioritizedReplayBuffer(MAX_MEMORY)
         self.model = Linear_QNet(11, 256, 3)
         self.trainer = QTrainer(self.model, lr=LR, gamma=self.gamma)
 
@@ -66,16 +67,38 @@ class Agent:
         return np.array(state, dtype=int)
 
     def remember(self, state, action, reward, next_state, done):
-        self.memory.append((state, action, reward, next_state, done))
+        self.memory.add((state, action, reward, next_state, done))
 
     def train_long_memory(self):
-        if len(self.memory) > BATCH_SIZE:
-            mini_sample = random.sample(self.memory, BATCH_SIZE)
-        else:
-            mini_sample = self.memory
 
-        states, actions, rewards, next_states, dones = zip(*mini_sample)
-        self.trainer.train_step(states, actions, rewards, next_states, dones)
+            if len(self.memory) == 0:
+                return
+
+            batch_size = min(BATCH_SIZE, len(self.memory))
+
+            # Gradually increase beta towards 1
+            beta = min(1.0, 0.4 + 0.6 * self.n_games / 1000)
+
+            # Sample prioritized experiences
+            batch, indices, weights = self.memory.sample(
+                batch_size,
+                beta
+            )
+
+            states, actions, rewards, next_states, dones = zip(*batch)
+
+            # Train and receive TD errors
+            errors = self.trainer.train_step(
+                states,
+                actions,
+                rewards,
+                next_states,
+                dones,
+                weights
+            )
+
+            # Update priorities using the new TD errors
+            self.memory.update_priorities(indices, errors)
 
     def train_short_memory(self, state, action, reward, next_state, done):
         self.trainer.train_step(state, action, reward, next_state, done)
