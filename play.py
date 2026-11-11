@@ -7,15 +7,18 @@ def evaluate():
     game = SnakeGame()
 
     agent.model.load_state_dict(
-        torch.load("model.pth", map_location="cpu")
+    torch.load(
+        "dueling_double_dqn_per.pth",
+        map_location="cpu"
     )
+)
 
     # Disable random exploration
     agent.epsilon = 0
 
     scores = []
 
-    for episode in range(10):
+    for episode in range(50):
         game.reset()
         done = False
 

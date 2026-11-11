@@ -7,32 +7,41 @@ import os
 import copy
 
 class Linear_QNet(nn.Module):
+
     def __init__(self, input_size, hidden_size, output_size):
         super().__init__()
-        self.linear1 = nn.Linear(input_size, hidden_size)
-        self.linear2 = nn.Linear(hidden_size, output_size)
+
+        # Shared feature extraction layer
+        self.shared = nn.Linear(input_size, hidden_size)
+
+        # Value stream: estimates how good the state is
+        self.value = nn.Linear(hidden_size, 1)
+
+        # Advantage stream: estimates the advantage of each action
+        self.advantage = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
-        x = F.relu(self.linear1(x))
-        x = self.linear2(x)
-        return x
+
+        # Convert single input into a batch
+        if x.dim() == 1:
+            x = x.unsqueeze(0)
+
+        # Shared layer
+        x = F.relu(self.shared(x))
+
+        # Value and advantage streams
+        value = self.value(x)
+        advantage = self.advantage(x)
+
+        # Combine both streams
+        q_values = value + (
+            advantage - advantage.mean(dim=1, keepdim=True)
+        )
+
+        return q_values
 
     def save(self, file_name='model.pth'):
-        model_folder_path = './model'
-        os.makedirs(model_folder_path, exist_ok=True)
-        file_path = os.path.join(model_folder_path, file_name)
-        torch.save(self.state_dict(), file_path)
-        try:
-            torch.save(self.state_dict(), file_name)
-        except Exception:
-            pass
-
-    def load(self, file_path='./model/model.pth'):
-        if os.path.exists(file_path):
-            self.load_state_dict(torch.load(file_path, weights_only=True))
-            self.eval()
-            return True
-        return False
+        torch.save(self.state_dict(), file_name)
 
 
 class QTrainer:

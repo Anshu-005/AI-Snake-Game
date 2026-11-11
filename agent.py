@@ -12,13 +12,18 @@ BATCH_SIZE = 1000
 LR = 0.001
 
 class Agent:
-    def __init__(self):
+    def __init__(self, training=True):
         self.n_games = 0
         self.epsilon = 0  # randomness
         self.gamma = 0.9  # discount rate
-        self.memory = PrioritizedReplayBuffer(MAX_MEMORY)
+        self.training = training
         self.model = Linear_QNet(11, 256, 3)
-        self.trainer = QTrainer(self.model, lr=LR, gamma=self.gamma)
+        if training:
+            self.memory = PrioritizedReplayBuffer(MAX_MEMORY)
+            self.trainer = QTrainer(self.model, lr=LR, gamma=self.gamma)
+        else:
+            self.memory = None
+            self.trainer = None
 
     def get_state(self, game):
         head = game.snake[0]
@@ -67,56 +72,59 @@ class Agent:
         return np.array(state, dtype=int)
 
     def remember(self, state, action, reward, next_state, done):
-        self.memory.add((state, action, reward, next_state, done))
+        if self.memory is not None:
+            self.memory.add((state, action, reward, next_state, done))
 
     def train_long_memory(self):
+        if self.trainer is None or self.memory is None or len(self.memory) == 0:
+            return
 
-            if len(self.memory) == 0:
-                return
+        batch_size = min(BATCH_SIZE, len(self.memory))
 
-            batch_size = min(BATCH_SIZE, len(self.memory))
+        # Gradually increase beta towards 1
+        beta = min(1.0, 0.4 + 0.6 * self.n_games / 1000)
 
-            # Gradually increase beta towards 1
-            beta = min(1.0, 0.4 + 0.6 * self.n_games / 1000)
+        # Sample prioritized experiences
+        batch, indices, weights = self.memory.sample(
+            batch_size,
+            beta
+        )
 
-            # Sample prioritized experiences
-            batch, indices, weights = self.memory.sample(
-                batch_size,
-                beta
-            )
+        states, actions, rewards, next_states, dones = zip(*batch)
 
-            states, actions, rewards, next_states, dones = zip(*batch)
+        # Train and receive TD errors
+        errors = self.trainer.train_step(
+            states,
+            actions,
+            rewards,
+            next_states,
+            dones,
+            weights
+        )
 
-            # Train and receive TD errors
-            errors = self.trainer.train_step(
-                states,
-                actions,
-                rewards,
-                next_states,
-                dones,
-                weights
-            )
-
-            # Update priorities using the new TD errors
-            self.memory.update_priorities(indices, errors)
+        # Update priorities using the new TD errors
+        self.memory.update_priorities(indices, errors)
 
     def train_short_memory(self, state, action, reward, next_state, done):
-        self.trainer.train_step(state, action, reward, next_state, done)
+        if self.trainer is not None:
+            self.trainer.train_step(state, action, reward, next_state, done)
 
     def get_action(self, state):
-        # Tradeoff between exploration and exploitation
-        self.epsilon = 80 - self.n_games
+        self.epsilon = max(0.05, 0.4 * (0.995 ** self.n_games))
+
         final_move = [0, 0, 0]
 
-        if random.randint(0, 200) < self.epsilon:
+        if random.random() < self.epsilon:
             move = random.randint(0, 2)
-            final_move[move] = 1
         else:
             state0 = torch.tensor(state, dtype=torch.float)
+
             with torch.no_grad():
                 prediction = self.model(state0)
+
             move = torch.argmax(prediction).item()
-            final_move[move] = 1
+
+        final_move[move] = 1
 
         return final_move
 
