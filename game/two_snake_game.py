@@ -121,15 +121,22 @@ class TwoSnakeGame:
         self._place_food()
 
     def _place_food(self):
-        """Place food at a valid location not occupied by either snake."""
-        play_h = self.height - self.header_height
-        while True:
-            x = random.randint(0, (self.width - BLOCK_SIZE) // BLOCK_SIZE) * BLOCK_SIZE
-            y = self.header_height + random.randint(0, (play_h - BLOCK_SIZE) // BLOCK_SIZE) * BLOCK_SIZE
-            food_pt = Point(x, y)
-            if food_pt not in self.snake1 and food_pt not in self.snake2:
-                self.food = food_pt
-                break
+        """
+        Place food at an available grid position below the header not occupied by either snake.
+        If the board is completely full, sets self.food = None.
+        """
+        occupied = set(self.snake1) | set(self.snake2)
+        available_positions = [
+            Point(x, y)
+            for x in range(0, self.width, BLOCK_SIZE)
+            for y in range(self.header_height, self.height, BLOCK_SIZE)
+            if Point(x, y) not in occupied
+        ]
+
+        if available_positions:
+            self.food = random.choice(available_positions)
+        else:
+            self.food = None
 
     def is_wall_collision(self, point):
         """Check if a point hits any wall or the top header boundary."""
@@ -185,6 +192,43 @@ class TwoSnakeGame:
             return clockwise[(idx - 1) % 4]
         return current_dir
 
+    def handle_human_input(self, key):
+        """
+        Handle keyboard input for the human-controlled snake.
+
+        Arrow keys and WASD are supported.
+        Prevents the snake from reversing directly.
+        """
+
+        key_directions = {
+            pygame.K_UP: Direction.UP,
+            pygame.K_w: Direction.UP,
+
+            pygame.K_DOWN: Direction.DOWN,
+            pygame.K_s: Direction.DOWN,
+
+            pygame.K_LEFT: Direction.LEFT,
+            pygame.K_a: Direction.LEFT,
+
+            pygame.K_RIGHT: Direction.RIGHT,
+            pygame.K_d: Direction.RIGHT
+        }
+
+        new_direction = key_directions.get(key)
+
+        if new_direction is None:
+            return
+
+        opposite_directions = {
+            Direction.UP: Direction.DOWN,
+            Direction.DOWN: Direction.UP,
+            Direction.LEFT: Direction.RIGHT,
+            Direction.RIGHT: Direction.LEFT
+        }
+
+        if new_direction != opposite_directions[self.direction1]:
+            self.direction1 = new_direction
+
     def play_step(self, action1=None, action2=None):
         """
         Execute one synchronous step for both snakes.
@@ -208,43 +252,68 @@ class TwoSnakeGame:
         eliminated2 = False
 
         # 3. Collision Resolution
-        # Rule A: Head-to-Head collision
-        if (
-    self.alive1
-    and self.alive2
-    and (
+
+        # Determine whether either snake will eat food this frame
+        snake1_eats = self.alive1 and self.food is not None and new_head1 == self.food
+        snake2_eats = self.alive2 and self.food is not None and new_head2 == self.food
+
+        eliminated1 = False
+        eliminated2 = False
+
+        # Rule A: Head-to-head collision and head swap
+        if self.alive1 and self.alive2:
+            if (
                 new_head1 == new_head2
                 or (
                     new_head1 == self.head2
                     and new_head2 == self.head1
                 )
-            )
-        ):
-            eliminated1 = True
-            eliminated2 = True
+            ):
+                eliminated1 = True
+                eliminated2 = True
 
         # Rule B: Snake 1 collisions
         if self.alive1 and not eliminated1:
+
             # Wall collision
             if self.is_wall_collision(new_head1):
                 eliminated1 = True
-            # Self-collision (vacating tail does not kill unless tail grew)
-            elif new_head1 in (self.snake1 if self.head1 == self.food else self.snake1[:-1]):
+
+            # Self collision
+            elif new_head1 in (
+                self.snake1 if snake1_eats else self.snake1[:-1]
+            ):
                 eliminated1 = True
+
             # Opponent body collision
-            elif new_head1 in (self.snake2 if (not self.alive2 or self.head2 == self.food) else self.snake2[:-1]):
+            elif self.alive2 and new_head1 in (
+                self.snake2 if snake2_eats else self.snake2[:-1]
+            ):
+                eliminated1 = True
+
+            elif not self.alive2 and new_head1 in self.snake2:
                 eliminated1 = True
 
         # Rule C: Snake 2 collisions
         if self.alive2 and not eliminated2:
+
             # Wall collision
             if self.is_wall_collision(new_head2):
                 eliminated2 = True
-            # Self-collision
-            elif new_head2 in (self.snake2 if self.head2 == self.food else self.snake2[:-1]):
+
+            # Self collision
+            elif new_head2 in (
+                self.snake2 if snake2_eats else self.snake2[:-1]
+            ):
                 eliminated2 = True
+
             # Opponent body collision
-            elif new_head2 in (self.snake1 if (not self.alive1 or self.head1 == self.food) else self.snake1[:-1]):
+            elif self.alive1 and new_head2 in (
+                self.snake1 if snake1_eats else self.snake1[:-1]
+            ):
+                eliminated2 = True
+
+            elif not self.alive1 and new_head2 in self.snake1:
                 eliminated2 = True
 
         # Apply eliminations
@@ -283,8 +352,12 @@ class TwoSnakeGame:
         # 5. Check game over condition
         # Game ends when both snakes are eliminated or max match duration is reached
         game_over = False
-        if (not self.alive1 and not self.alive2) or (self.frame_iteration >= self.max_frames):
-            game_over = True
+        if (
+    (not self.alive1 and not self.alive2)
+    or self.frame_iteration >= self.max_frames
+    or self.food is None
+        ):
+         game_over = True
 
         # Determine winner
         winner = None
